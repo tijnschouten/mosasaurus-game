@@ -41,7 +41,7 @@ export class GameOverScene extends Phaser.Scene {
       color: '#d0f0ff'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, height / 2 + 98, 'ENTER/SPATIE = Opnieuw   |   ESC = Menu', {
+    this.add.text(width / 2, height / 2 + 98, 'ENTER/SPATIE of TIK = Opnieuw   |   ESC = Menu', {
       fontFamily: 'Trebuchet MS',
       fontSize: '22px',
       color: '#fff6bd'
@@ -50,5 +50,6 @@ export class GameOverScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-SPACE', () => this.scene.start('Game'));
     this.input.keyboard.on('keydown-ENTER', () => this.scene.start('Game'));
     this.input.keyboard.on('keydown-ESC', () => this.scene.start('MainMenu'));
+    this.input.on('pointerdown', () => this.scene.start('Game'));
   }
 }

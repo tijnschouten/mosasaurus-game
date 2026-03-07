@@ -204,7 +204,7 @@ export class GameScene extends Phaser.Scene {
       color: '#fff7b8'
     }).setDepth(30);
 
-    this.helpText = this.add.text(width - 14, 10, 'Pijltjes/WASD: zwem  |  ESC: menu', {
+    this.helpText = this.add.text(width - 14, 10, 'Pijltjes/WASD of touch: zwem  |  ESC: menu', {
       fontFamily: 'Trebuchet MS',
       fontSize: '17px',
       color: '#cdeafa'
@@ -302,6 +302,18 @@ export class GameScene extends Phaser.Scene {
       align: 'center',
       wordWrap: { width: width * 0.72 }
     }).setOrigin(0.5, 0).setDepth(52).setVisible(false);
+
+    this.quizOptionButtons = [];
+    for (let i = 0; i < 3; i += 1) {
+      const y = (height / 2) + 18 + (i * 44);
+      const btn = this.add.rectangle(width / 2, y, width * 0.68, 36, 0x22566f, 0.82)
+        .setStrokeStyle(2, 0x9adfff)
+        .setDepth(51)
+        .setVisible(false)
+        .setInteractive({ useHandCursor: true });
+      btn.on('pointerdown', () => this.answerQuiz(i));
+      this.quizOptionButtons.push(btn);
+    }
   }
 
   setupInput() {
@@ -313,15 +325,42 @@ export class GameScene extends Phaser.Scene {
     this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     this.key3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+    this.touchControlId = -1;
+    this.touchVerticalInput = 0;
 
     const unlock = () => this.unlockAudio();
     this.input.once('pointerdown', unlock);
     this.input.keyboard.once('keydown', unlock);
 
+    this.input.on('pointerdown', (pointer) => {
+      if (!this.isRunning || this.isPausedForQuiz) return;
+      this.touchControlId = pointer.id;
+      this.updateTouchInput(pointer);
+    });
+    this.input.on('pointermove', (pointer) => {
+      if (!this.isRunning || this.isPausedForQuiz) return;
+      if (this.touchControlId !== pointer.id) return;
+      this.updateTouchInput(pointer);
+    });
+    this.input.on('pointerup', (pointer) => {
+      if (this.touchControlId !== pointer.id) return;
+      this.touchControlId = -1;
+      this.touchVerticalInput = 0;
+    });
+
     this.input.keyboard.on('keydown-ESC', () => {
       if (!this.isRunning || this.isPausedForQuiz) return;
       this.scene.start('MainMenu');
     });
+  }
+
+  updateTouchInput(pointer) {
+    const dy = pointer.worldY - this.player.y;
+    if (Math.abs(dy) < 18) {
+      this.touchVerticalInput = 0;
+      return;
+    }
+    this.touchVerticalInput = dy < 0 ? 1 : -1;
   }
 
   setupAudio() {
@@ -388,6 +427,9 @@ export class GameScene extends Phaser.Scene {
     this.verticalInput = 0;
     if (upPressed) this.verticalInput += 1;
     if (downPressed) this.verticalInput -= 1;
+    if (this.touchControlId !== -1) {
+      this.verticalInput = this.touchVerticalInput;
+    }
 
     const swimSpeed = 320;
     const minY = this.waterLineY - 95;
@@ -731,6 +773,7 @@ export class GameScene extends Phaser.Scene {
     this.quizOptionsText.setText(
       `1) ${this.currentQuiz.options[0]}\n2) ${this.currentQuiz.options[1]}\n3) ${this.currentQuiz.options[2]}`
     );
+    this.quizOptionButtons.forEach((btn) => btn.setVisible(true));
     this.quizFeedbackText.setText('Kies 1, 2 of 3');
 
     if (this.registry.get('sfxOn')) {
@@ -750,8 +793,13 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.key1)) selected = 0;
     if (Phaser.Input.Keyboard.JustDown(this.key2)) selected = 1;
     if (Phaser.Input.Keyboard.JustDown(this.key3)) selected = 2;
-    if (selected === -1) return;
+    if (selected !== -1) {
+      this.answerQuiz(selected);
+    }
+  }
 
+  answerQuiz(selected) {
+    if (!this.isPausedForQuiz || !this.currentQuiz) return;
     const correct = selected === this.currentQuiz.correctIndex;
     if (correct) {
       this.score += this.quizConfig.bonusPoints;
@@ -784,6 +832,7 @@ export class GameScene extends Phaser.Scene {
     this.quizQuestionText.setVisible(false);
     this.quizOptionsText.setVisible(false);
     this.quizFeedbackText.setVisible(false);
+    this.quizOptionButtons.forEach((btn) => btn.setVisible(false));
 
     this.resumeGraceUntil = this.time.now + this.quizConfig.resumeGraceMs;
   }

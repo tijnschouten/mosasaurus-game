@@ -58,7 +58,7 @@ export class MainMenuScene extends Phaser.Scene {
       color: '#d8f4ff'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, 478, 'ENTER of SPATIE = Start', {
+    this.add.text(width / 2, 478, 'ENTER/SPATIE of TIK = Start', {
       fontFamily: 'Trebuchet MS',
       fontSize: '28px',
       color: '#fff9cc'
@@ -90,6 +90,7 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     this.input.once('pointerdown', () => this.unlockAudio());
+    this.input.on('pointerdown', () => this.startGame());
     this.input.keyboard.once('keydown', () => this.unlockAudio());
   }
 
