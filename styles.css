@@ -40,6 +40,21 @@ canvas {
   height: 100%;
 }
 
+#fullscreen-btn {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  z-index: 999;
+  display: none;
+  border: 2px solid #9ee8ff;
+  border-radius: 12px;
+  background: rgba(8, 36, 56, 0.92);
+  color: #e5fbff;
+  font-family: 'Trebuchet MS', sans-serif;
+  font-size: 16px;
+  padding: 10px 14px;
+}
+
 @media (max-width: 900px) {
   body {
     padding: 0;

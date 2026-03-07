@@ -24,3 +24,53 @@ const config = {
 };
 
 new Phaser.Game(config);
+
+function createFullscreenHelper() {
+  const root = document.getElementById('game-root');
+  if (!root) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'fullscreen-btn';
+  btn.type = 'button';
+  btn.textContent = 'Ga fullscreen';
+  document.body.appendChild(btn);
+
+  const isMobileLike = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+  const isLandscape = () => window.innerWidth > window.innerHeight;
+  const canFullscreen = () => !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+  const requestFs = async () => {
+    if (!canFullscreen()) return;
+    try {
+      if (root.requestFullscreen) {
+        await root.requestFullscreen();
+      } else if (root.webkitRequestFullscreen) {
+        root.webkitRequestFullscreen();
+      }
+    } catch (_err) {
+      // User gesture / browser policy can block this. Button stays visible.
+    }
+  };
+
+  const syncButton = () => {
+    const show = isMobileLike() && isLandscape() && !isFullscreen() && canFullscreen();
+    btn.style.display = show ? 'block' : 'none';
+  };
+
+  btn.addEventListener('click', requestFs);
+  window.addEventListener('resize', syncButton);
+  window.addEventListener('orientationchange', syncButton);
+  document.addEventListener('fullscreenchange', syncButton);
+  document.addEventListener('webkitfullscreenchange', syncButton);
+
+  document.addEventListener('pointerdown', () => {
+    if (isMobileLike() && isLandscape() && !isFullscreen()) {
+      requestFs();
+    }
+  }, { once: true });
+
+  syncButton();
+}
+
+createFullscreenHelper();
