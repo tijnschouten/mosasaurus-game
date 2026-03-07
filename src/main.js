@@ -29,10 +29,14 @@ function createFullscreenHelper() {
   const root = document.getElementById('game-root');
   if (!root) return;
 
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isInStandalone = window.matchMedia('(display-mode: standalone)').matches || !!window.navigator.standalone;
+
   const btn = document.createElement('button');
-  btn.id = 'fullscreen-btn';
+  btn.id = isIOS ? 'ios-install-hint' : 'fullscreen-btn';
   btn.type = 'button';
-  btn.textContent = 'Ga fullscreen';
+  btn.textContent = isIOS ? 'iPhone: Deel -> Zet op beginscherm' : 'Ga fullscreen';
   document.body.appendChild(btn);
 
   const isMobileLike = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
@@ -54,11 +58,18 @@ function createFullscreenHelper() {
   };
 
   const syncButton = () => {
+    if (isIOS) {
+      const showIOSHint = isMobileLike() && !isInStandalone;
+      btn.style.display = showIOSHint ? 'block' : 'none';
+      return;
+    }
     const show = isMobileLike() && isLandscape() && !isFullscreen() && canFullscreen();
     btn.style.display = show ? 'block' : 'none';
   };
 
-  btn.addEventListener('click', requestFs);
+  if (!isIOS) {
+    btn.addEventListener('click', requestFs);
+  }
   window.addEventListener('resize', syncButton);
   window.addEventListener('orientationchange', syncButton);
   document.addEventListener('fullscreenchange', syncButton);

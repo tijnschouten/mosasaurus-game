@@ -18,6 +18,7 @@ body {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 12px;
@@ -55,14 +56,32 @@ canvas {
   padding: 10px 14px;
 }
 
+#ios-install-hint {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 999;
+  display: none;
+  border: 2px solid #9ee8ff;
+  border-radius: 12px;
+  background: rgba(8, 36, 56, 0.92);
+  color: #e5fbff;
+  font-family: 'Trebuchet MS', sans-serif;
+  font-size: 15px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
 @media (max-width: 900px) {
   body {
-    padding: 0;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   }
 
   #game-root {
     width: 100vw;
     max-height: 100vh;
+    max-height: 100dvh;
     border-width: 0;
     border-radius: 0;
     box-shadow: none;
