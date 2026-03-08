@@ -17,10 +17,19 @@ export class MainMenuScene extends Phaser.Scene {
       strokeThickness: 6
     }).setOrigin(0.5);
 
-    if (this.textures.exists('mosa_sheet')) {
+    const previewSheetKey = this.textures.exists('mosa_sheet2_clean')
+      ? 'mosa_sheet2_clean'
+      : (this.textures.exists('mosa_sheet') ? 'mosa_sheet' : null);
+    if (previewSheetKey) {
       this.previewTailIndex = 1;
       this.previewMouthOpenUntil = 0;
-      this.previewSprite = this.add.sprite(width / 2, 245, 'mosa_sheet', 1).setScale(0.62);
+      let previewScale = 0.62;
+      if (previewSheetKey === 'mosa_sheet2_clean') {
+        const frame = this.textures.getFrame(previewSheetKey, 1);
+        const fw = frame?.width ?? 500;
+        previewScale = 340 / fw;
+      }
+      this.previewSprite = this.add.sprite(width / 2, 245, previewSheetKey, 1).setScale(previewScale);
 
       this.time.addEvent({
         delay: 180,

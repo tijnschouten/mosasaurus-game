@@ -4,6 +4,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    this.load.image('mosa_sheet2_raw', 'assets/mosasaurus_sheet_2.png');
     this.load.spritesheet('mosa_sheet', 'assets/mosasaurus_sheet.png', {
       frameWidth: 560,
       frameHeight: 150
@@ -11,6 +12,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    this.prepareMosaSheet2();
     this.createTextures();
 
     if (this.registry.get('musicOn') === undefined) {
@@ -21,6 +23,141 @@ export class BootScene extends Phaser.Scene {
     }
 
     this.scene.start('MainMenu');
+  }
+
+  prepareMosaSheet2() {
+    if (!this.textures.exists('mosa_sheet2_raw')) return;
+
+    const src = this.textures.get('mosa_sheet2_raw').getSourceImage();
+    const scanCanvas = document.createElement('canvas');
+    scanCanvas.width = src.width;
+    scanCanvas.height = src.height;
+    const ctx = scanCanvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(src, 0, 0);
+    const img = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+    const data = img.data;
+    const w = scanCanvas.width;
+    const h = scanCanvas.height;
+    const alphaCutoff = 8;
+
+    const colAlpha = new Array(w).fill(false);
+    const rowAlpha = new Array(h).fill(false);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const a = data[((y * w + x) * 4) + 3];
+        if (a > alphaCutoff) {
+          colAlpha[x] = true;
+          rowAlpha[y] = true;
+        }
+      }
+    }
+
+    const toRanges = (arr, minLen = 4) => {
+      const out = [];
+      let start = -1;
+      for (let i = 0; i < arr.length; i += 1) {
+        if (arr[i] && start === -1) start = i;
+        if ((!arr[i] || i === arr.length - 1) && start !== -1) {
+          const end = (arr[i] ? i : i - 1);
+          if ((end - start + 1) >= minLen) {
+            out.push({ start, end });
+          }
+          start = -1;
+        }
+      }
+      return out;
+    };
+
+    let colRanges = toRanges(colAlpha);
+    let rowRanges = toRanges(rowAlpha);
+
+    // Fallback if auto-segmentation fails: split as 3x2 grid over full image.
+    if (colRanges.length !== 3 || rowRanges.length !== 2) {
+      const cw = Math.floor(w / 3);
+      const rh = Math.floor(h / 2);
+      colRanges = [
+        { start: 0, end: cw - 1 },
+        { start: cw, end: (cw * 2) - 1 },
+        { start: cw * 2, end: w - 1 }
+      ];
+      rowRanges = [
+        { start: 0, end: rh - 1 },
+        { start: rh, end: h - 1 }
+      ];
+    }
+
+    const findBoundsInCell = (x0, x1, y0, y1) => {
+      let minX = x1;
+      let minY = y1;
+      let maxX = x0;
+      let maxY = y0;
+      let found = false;
+
+      for (let y = y0; y <= y1; y += 1) {
+        for (let x = x0; x <= x1; x += 1) {
+          const a = data[((y * w + x) * 4) + 3];
+          if (a > alphaCutoff) {
+            found = true;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      if (!found) {
+        return { minX: x0, minY: y0, maxX: x1, maxY: y1 };
+      }
+      return { minX, minY, maxX, maxY };
+    };
+
+    const cells = [];
+    let maxSpriteW = 0;
+    let maxSpriteH = 0;
+    for (let row = 0; row < 2; row += 1) {
+      for (let col = 0; col < 3; col += 1) {
+        const xr = colRanges[col];
+        const yr = rowRanges[row];
+        const bounds = findBoundsInCell(xr.start, xr.end, yr.start, yr.end);
+        const spriteW = bounds.maxX - bounds.minX + 1;
+        const spriteH = bounds.maxY - bounds.minY + 1;
+        maxSpriteW = Math.max(maxSpriteW, spriteW);
+        maxSpriteH = Math.max(maxSpriteH, spriteH);
+        cells.push({ row, col, ...bounds, spriteW, spriteH });
+      }
+    }
+
+    const pad = 10;
+    const frameW = maxSpriteW + (pad * 2);
+    const frameH = maxSpriteH + (pad * 2);
+    const packedCanvas = document.createElement('canvas');
+    packedCanvas.width = frameW * 3;
+    packedCanvas.height = frameH * 2;
+    const packedCtx = packedCanvas.getContext('2d');
+    if (!packedCtx) return;
+
+    cells.forEach((cell) => {
+      const srcW = cell.spriteW;
+      const srcH = cell.spriteH;
+      const dstX = (cell.col * frameW) + Math.floor((frameW - srcW) / 2);
+      const dstY = (cell.row * frameH) + Math.floor((frameH - srcH) / 2);
+      packedCtx.drawImage(
+        scanCanvas,
+        cell.minX, cell.minY, srcW, srcH,
+        dstX, dstY, srcW, srcH
+      );
+    });
+
+    if (this.textures.exists('mosa_sheet2_clean')) {
+      this.textures.remove('mosa_sheet2_clean');
+    }
+    this.textures.addSpriteSheet('mosa_sheet2_clean', packedCanvas, {
+      frameWidth: frameW,
+      frameHeight: frameH
+    });
   }
 
   createTextures() {
@@ -171,6 +308,12 @@ export class BootScene extends Phaser.Scene {
     g.fillStyle(0xd6f4ff, 0.6);
     g.fillCircle(7, 7, 6);
     g.generateTexture('bubble', 14, 14);
+
+    // Splash particle
+    g.clear();
+    g.fillStyle(0xe6fbff, 0.95);
+    g.fillCircle(4, 4, 4);
+    g.generateTexture('splash_dot', 8, 8);
 
     g.destroy();
   }

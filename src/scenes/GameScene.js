@@ -56,6 +56,7 @@ export class GameScene extends Phaser.Scene {
     this.airCurrent = this.airConfig.airMax;
     this.waterLineY = 108;
     this.isUnderwater = true;
+    this.surfaceBreathBuffer = 28;
     this.isJumping = false;
     this.jumpVy = 0;
     this.jumpGravity = 940;
@@ -63,9 +64,14 @@ export class GameScene extends Phaser.Scene {
 
     this.isRunning = true;
     this.isPausedForQuiz = false;
+    this.isPausedGame = false;
     this.currentQuiz = null;
     this.quizSpawnBlockedUntil = this.quizConfig.spawnCooldownMs;
     this.biteOpenUntil = 0;
+    this.isBiteAnticipating = false;
+    this.diveTrailStart = 0;
+    this.diveTrailUntil = 0;
+    this.nextTrailEmitAt = 0;
     this.lowAirBeepAt = 0;
 
     this.factIndex = 0;
@@ -130,7 +136,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   setupPlayer(height) {
-    this.usingSheet = this.textures.exists('mosa_sheet');
+    this.usingSheet2 = this.textures.exists('mosa_sheet2_clean');
+    this.usingSheet = this.usingSheet2 || this.textures.exists('mosa_sheet');
     const closedKey = this.textures.exists('mosa_ref') ? 'mosa_ref' : 'mosa_closed';
     const openKey = this.textures.exists('mosa_ref_open') ? 'mosa_ref_open' : 'mosa_open';
 
@@ -140,16 +147,32 @@ export class GameScene extends Phaser.Scene {
     this.tail = null;
 
     if (this.usingSheet) {
-      this.player = this.physics.add.sprite(190, height / 2, 'mosa_sheet', 1);
-      this.playerScale = 0.44;
+      const sheetKey = this.usingSheet2 ? 'mosa_sheet2_clean' : 'mosa_sheet';
+      this.player = this.physics.add.sprite(190, height / 2, sheetKey, 1);
+      const frame = this.textures.getFrame(sheetKey, 1);
+      const fw = frame?.width ?? 500;
+      const fh = frame?.height ?? 220;
+      this.playerScale = this.usingSheet2 ? (220 / fw) : 0.44;
       this.player.setScale(this.playerScale);
-      this.player.body.setSize(238, 48, true);
-      this.player.body.setOffset(162, 58);
 
-      this.mouthOffset = new Phaser.Math.Vector2(236, -2);
-      this.bodyHitOffset = new Phaser.Math.Vector2(8, 10);
-      this.bodyHitRadius = 22;
-      this.biteRadius = 12;
+      if (this.usingSheet2) {
+        const bodyW = fw * 0.44;
+        const bodyH = fh * 0.25;
+        this.player.body.setSize(bodyW, bodyH, true);
+        this.player.body.setOffset((fw - bodyW) * 0.5, (fh * 0.50) - (bodyH * 0.2));
+
+        this.mouthOffset = new Phaser.Math.Vector2(fw * 0.40, fh * 0.04);
+        this.bodyHitOffset = new Phaser.Math.Vector2(0, fh * 0.05);
+        this.bodyHitRadius = 23;
+        this.biteRadius = 13;
+      } else {
+        this.player.body.setSize(238, 48, true);
+        this.player.body.setOffset(162, 58);
+        this.mouthOffset = new Phaser.Math.Vector2(236, -2);
+        this.bodyHitOffset = new Phaser.Math.Vector2(8, 10);
+        this.bodyHitRadius = 22;
+        this.biteRadius = 12;
+      }
     } else {
       this.player = this.physics.add.image(190, height / 2, this.playerClosedKey);
       const useReferenceImage = closedKey === 'mosa_ref';
@@ -216,11 +239,11 @@ export class GameScene extends Phaser.Scene {
       color: '#daf4ff'
     }).setOrigin(1, 0).setDepth(30);
 
-    this.airBarBg = this.add.rectangle(width - 150, 56, 180, 14, 0x0f2533, 0.9)
+    this.airBarBg = this.add.rectangle(width - 194, 72, 180, 14, 0x0f2533, 0.9)
       .setOrigin(0, 0.5)
       .setDepth(30)
       .setStrokeStyle(2, 0x8fdfff);
-    this.airBarFill = this.add.rectangle(width - 148, 56, 176, 10, 0x62e6ff, 1)
+    this.airBarFill = this.add.rectangle(width - 192, 72, 176, 10, 0x62e6ff, 1)
       .setOrigin(0, 0.5)
       .setDepth(31);
     this.airWarningText = this.add.text(width / 2, 28, 'LUCHT BIJNA OP!', {
@@ -238,29 +261,39 @@ export class GameScene extends Phaser.Scene {
       fontSize: '13px',
       color: '#d8f3ff'
     }).setOrigin(1, 1).setDepth(30).setAlpha(0.5);
+
+    this.pauseText = this.add.text(width / 2, height / 2, 'PAUZE\nSpatie = hervatten', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '42px',
+      color: '#e8fbff',
+      align: 'center',
+      stroke: '#0a2231',
+      strokeThickness: 6
+    }).setOrigin(0.5).setDepth(48).setVisible(false);
   }
 
   setupFacts(width, _height) {
-    const panelWidth = Math.min(560, Math.max(360, width - 560));
-    const panelX = (width / 2) + 80;
-    const panelY = 70;
+    const panelWidth = Math.min(460, Math.max(300, width * 0.42));
+    const panelX = (panelWidth / 2) + 18;
+    const panelY = 86;
 
-    this.factPanel = this.add.rectangle(panelX, panelY, panelWidth, 58, 0x102534, 0.9)
+    this.factPanel = this.add.rectangle(panelX, panelY, panelWidth, 34, 0x102534, 0.88)
       .setStrokeStyle(2, 0x9be0ff)
       .setDepth(40)
       .setVisible(false);
 
-    this.factTitle = this.add.text(panelX - (panelWidth / 2) + 14, panelY - 20, '', {
+    this.factTitle = this.add.text(panelX - (panelWidth / 2) + 10, panelY - 10, '', {
       fontFamily: 'Trebuchet MS',
-      fontSize: '16px',
+      fontSize: '13px',
       color: '#dff7ff'
     }).setDepth(41).setVisible(false);
 
-    this.factBody = this.add.text(panelX - (panelWidth / 2) + 14, panelY - 1, '', {
+    this.factBody = this.add.text(panelX - (panelWidth / 2) + 10, panelY - 10, '', {
       fontFamily: 'Trebuchet MS',
-      fontSize: '14px',
+      fontSize: '13px',
       color: '#c4e6f5',
-      wordWrap: { width: panelWidth - 28 }
+      wordWrap: { width: panelWidth - 18, useAdvancedWrap: true },
+      maxLines: 1
     }).setDepth(41).setVisible(false);
   }
 
@@ -287,15 +320,7 @@ export class GameScene extends Phaser.Scene {
       wordWrap: { width: width * 0.72 }
     }).setOrigin(0.5, 0).setDepth(52).setVisible(false);
 
-    this.quizOptionsText = this.add.text(width / 2, height / 2 + 22, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '22px',
-      color: '#cef0ff',
-      align: 'center',
-      wordWrap: { width: width * 0.72 }
-    }).setOrigin(0.5, 0).setDepth(52).setVisible(false);
-
-    this.quizFeedbackText = this.add.text(width / 2, height / 2 + 104, '', {
+    this.quizFeedbackText = this.add.text(width / 2, height / 2 + 146, '', {
       fontFamily: 'Trebuchet MS',
       fontSize: '20px',
       color: '#fff6bd',
@@ -304,6 +329,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setDepth(52).setVisible(false);
 
     this.quizOptionButtons = [];
+    this.quizOptionLabels = [];
     for (let i = 0; i < 3; i += 1) {
       const y = (height / 2) + 18 + (i * 44);
       const btn = this.add.rectangle(width / 2, y, width * 0.68, 36, 0x22566f, 0.82)
@@ -313,6 +339,14 @@ export class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
       btn.on('pointerdown', () => this.answerQuiz(i));
       this.quizOptionButtons.push(btn);
+
+      const label = this.add.text(width / 2, y, '', {
+        fontFamily: 'Trebuchet MS',
+        fontSize: '20px',
+        color: '#cef0ff',
+        align: 'center'
+      }).setOrigin(0.5).setDepth(52).setVisible(false);
+      this.quizOptionLabels.push(label);
     }
   }
 
@@ -352,6 +386,19 @@ export class GameScene extends Phaser.Scene {
       if (!this.isRunning || this.isPausedForQuiz) return;
       this.scene.start('MainMenu');
     });
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (!this.isRunning || this.isPausedForQuiz) return;
+      this.isPausedGame = !this.isPausedGame;
+      this.pauseText.setVisible(this.isPausedGame);
+      this.setAudioPaused(this.isPausedGame);
+    });
+  }
+
+  setAudioPaused(paused) {
+    if (!this.audioCtx || !this.audioMasterGain) return;
+    const now = this.audioCtx.currentTime;
+    this.audioMasterGain.gain.cancelScheduledValues(now);
+    this.audioMasterGain.gain.setTargetAtTime(paused ? 0.0001 : 1, now, 0.03);
   }
 
   updateTouchInput(pointer) {
@@ -365,11 +412,18 @@ export class GameScene extends Phaser.Scene {
 
   setupAudio() {
     this.audioCtx = this.sound?.context || null;
+    this.audioMasterGain = null;
+    if (this.audioCtx) {
+      this.audioMasterGain = this.audioCtx.createGain();
+      this.audioMasterGain.gain.setValueAtTime(1, this.audioCtx.currentTime);
+      this.audioMasterGain.connect(this.audioCtx.destination);
+    }
 
     this.musicEvent = this.time.addEvent({
       delay: 400,
       loop: true,
       callback: () => {
+        if (this.isPausedGame) return;
         if (!this.registry.get('musicOn')) return;
         const melody = [174, 196, 220, 246, 262, 246, 220, 196];
         const note = melody[Math.floor(this.time.now / 400) % melody.length];
@@ -389,6 +443,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.isPausedGame) {
+      this.updateDebug();
+      return;
+    }
+
     this.elapsedMs += delta;
     this.updateDifficulty();
 
@@ -403,6 +462,7 @@ export class GameScene extends Phaser.Scene {
     this.updateMouthSprite();
     this.updateEntities(delta);
     this.updateBubbles(delta);
+    this.updateDiveTrail();
     this.updateScore(delta);
     this.updateAir(delta);
 
@@ -441,6 +501,8 @@ export class GameScene extends Phaser.Scene {
       if (this.player.y <= this.waterLineY - 5) {
         this.isJumping = true;
         this.jumpVy = -410;
+        this.airCurrent = this.airConfig.airMax;
+        this.createSplash(this.player.x + (28 * this.playerScale), this.waterLineY, 1.2, 'exit');
       }
     } else {
       this.jumpVy += this.jumpGravity * dt;
@@ -450,23 +512,26 @@ export class GameScene extends Phaser.Scene {
         this.player.y = this.waterLineY + 4;
         this.isJumping = false;
         this.jumpVy = 0;
+        this.createSplash(this.player.x + (24 * this.playerScale), this.waterLineY, 2.4, 'entry');
+        this.createDiveBubbleTrail(2600);
       }
     }
 
     this.player.y = Phaser.Math.Clamp(this.player.y, minY, maxY);
 
-    const jumpTilt = this.isJumping ? Phaser.Math.Clamp((-this.jumpVy / 420) * 22, -12, 18) : 0;
-    const swimTilt = -this.verticalInput * 12;
-    const targetAngle = swimTilt + jumpTilt;
-    this.player.angle = Phaser.Math.Linear(this.player.angle, targetAngle, 0.15);
+    const jumpTilt = this.isJumping ? Phaser.Math.Clamp((this.jumpVy / 430) * 26, -22, 24) : 0;
+    const swimTilt = this.isJumping ? 0 : (-this.verticalInput * 12);
+    const targetAngle = this.isJumping ? jumpTilt : swimTilt;
+    this.player.angle = Phaser.Math.Linear(this.player.angle, targetAngle, this.isJumping ? 0.1 : 0.15);
 
-    this.isUnderwater = this.player.y > this.waterLineY;
+    this.isUnderwater = this.player.y > (this.waterLineY + this.surfaceBreathBuffer);
   }
 
   updateTailAnimation() {
     const speedNorm = Phaser.Math.Clamp((this.worldSpeed - this.difficultyConfig.baseSpeed) / (this.difficultyConfig.maxSpeed - this.difficultyConfig.baseSpeed), 0, 1);
     const freq = 0.006 + speedNorm * 0.004;
-    const amp = 7 + speedNorm * 6;
+    const baseAmp = 7 + speedNorm * 6;
+    const amp = this.isJumping ? baseAmp * 0.35 : baseAmp;
     const wave = Math.sin(this.time.now * freq);
     const wag = wave * amp;
 
@@ -493,7 +558,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   updateMouthSprite() {
-    const mouthOpen = this.time.now < this.biteOpenUntil ? 1 : 0;
+    const mouthOpen = (this.time.now < this.biteOpenUntil || this.isBiteAnticipating) ? 1 : 0;
     if (this.usingSheet) {
       this.player.setFrame((mouthOpen * 3) + this.tailFrameCol);
       return;
@@ -582,7 +647,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnEntity() {
-    if (!this.isRunning || this.isPausedForQuiz) {
+    if (!this.isRunning || this.isPausedForQuiz || this.isPausedGame) {
       return;
     }
 
@@ -705,6 +770,7 @@ export class GameScene extends Phaser.Scene {
 
   checkMouthEats() {
     const mouth = this.getMouthWorldPoint();
+    let anticipating = false;
 
     this.preyGroup.children.iterate((prey) => {
       if (!prey || !prey.active || !this.isRunning) return;
@@ -712,6 +778,10 @@ export class GameScene extends Phaser.Scene {
       const radius = prey.entityDef?.hitRadius ?? 12;
       const hitR = this.biteRadius + radius;
       const distSq = Phaser.Math.Distance.Squared(mouth.x, mouth.y, prey.x, prey.y);
+      const anticipateR = hitR + 34;
+      if (distSq <= anticipateR * anticipateR) {
+        anticipating = true;
+      }
       const nearBodyDistSq = Phaser.Math.Distance.Squared(this.player.x, this.player.y, prey.x, prey.y);
       const bodyCatchR = 28 + radius;
 
@@ -719,6 +789,8 @@ export class GameScene extends Phaser.Scene {
         this.consumePrey(prey);
       }
     });
+
+    this.isBiteAnticipating = anticipating;
   }
 
   checkQuizPickup() {
@@ -766,14 +838,14 @@ export class GameScene extends Phaser.Scene {
     this.quizBox.setVisible(true);
     this.quizTitle.setVisible(true);
     this.quizQuestionText.setVisible(true);
-    this.quizOptionsText.setVisible(true);
     this.quizFeedbackText.setVisible(true);
 
     this.quizQuestionText.setText(this.currentQuiz.question);
-    this.quizOptionsText.setText(
-      `1) ${this.currentQuiz.options[0]}\n2) ${this.currentQuiz.options[1]}\n3) ${this.currentQuiz.options[2]}`
-    );
     this.quizOptionButtons.forEach((btn) => btn.setVisible(true));
+    this.quizOptionLabels.forEach((label, i) => {
+      label.setText(`${i + 1}) ${this.currentQuiz.options[i]}`);
+      label.setVisible(true);
+    });
     this.quizFeedbackText.setText('Kies 1, 2 of 3');
 
     if (this.registry.get('sfxOn')) {
@@ -830,9 +902,9 @@ export class GameScene extends Phaser.Scene {
     this.quizBox.setVisible(false);
     this.quizTitle.setVisible(false);
     this.quizQuestionText.setVisible(false);
-    this.quizOptionsText.setVisible(false);
     this.quizFeedbackText.setVisible(false);
     this.quizOptionButtons.forEach((btn) => btn.setVisible(false));
+    this.quizOptionLabels.forEach((label) => label.setVisible(false));
 
     this.resumeGraceUntil = this.time.now + this.quizConfig.resumeGraceMs;
   }
@@ -864,13 +936,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   showNextFact() {
-    if (!this.isRunning || this.isPausedForQuiz) return;
+    if (!this.isRunning || this.isPausedForQuiz || this.isPausedGame) return;
 
     const fact = OCEAN_FACTS[this.factIndex % OCEAN_FACTS.length];
     this.factIndex += 1;
 
-    this.factTitle.setText(fact.title);
-    this.factBody.setText(fact.body);
+    this.factTitle.setText('');
+    this.factBody.setText(`Wist je? ${fact.body}`);
     this.factPanel.setVisible(true);
     this.factTitle.setVisible(true);
     this.factBody.setVisible(true);
@@ -909,6 +981,96 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  createSplash(x, y, strength = 1, mode = 'exit') {
+    const entryBoost = mode === 'entry' ? 1.45 : 1.0;
+    const s = strength * entryBoost;
+    const count = Math.round(30 + (24 * s));
+    for (let i = 0; i < count; i += 1) {
+      const drop = this.add.image(
+        x + Phaser.Math.Between(-56, 56),
+        y + Phaser.Math.Between(-8, 8),
+        'splash_dot'
+      )
+        .setDepth(12)
+        .setAlpha(Phaser.Math.FloatBetween(0.62, 1))
+        .setScale(Phaser.Math.FloatBetween(1.4, 3.4));
+      const dx = Phaser.Math.FloatBetween(-180, 180) * s;
+      const dy = Phaser.Math.FloatBetween(-240, -70) * s;
+      this.tweens.add({
+        targets: drop,
+        x: drop.x + dx * 0.34,
+        y: drop.y + dy * 0.34,
+        alpha: 0,
+        duration: Phaser.Math.Between(420, 760),
+        ease: 'Quad.easeOut',
+        onComplete: () => drop.destroy()
+      });
+    }
+  }
+
+  createDiveBubbleTrail(durationMs = 2400) {
+    this.diveTrailStart = this.time.now;
+    this.diveTrailUntil = this.time.now + durationMs;
+    this.nextTrailEmitAt = this.time.now;
+  }
+
+  updateDiveTrail() {
+    if (this.time.now >= this.diveTrailUntil) return;
+    if (this.isJumping) return;
+    if (!this.isUnderwater) return;
+    if (this.time.now < this.nextTrailEmitAt) return;
+
+    const totalDur = Math.max(1, this.diveTrailUntil - this.diveTrailStart);
+    const remaining = Phaser.Math.Clamp((this.diveTrailUntil - this.time.now) / totalDur, 0, 1);
+    const intensity = 0.35 + (0.65 * remaining);
+    this.emitTrailBurst(intensity);
+    this.nextTrailEmitAt = this.time.now + 45;
+  }
+
+  emitTrailBurst(intensity) {
+    const p = this.getTrailWorldPoint();
+    const ang = Phaser.Math.DegToRad(this.player.angle);
+    const bx = -Math.cos(ang);
+    const by = -Math.sin(ang);
+    const burst = Math.round(2 + (5 * intensity));
+
+    for (let i = 0; i < burst; i += 1) {
+      const bubble = this.add.image(
+        p.x + Phaser.Math.Between(-12, 12),
+        p.y + Phaser.Math.Between(-8, 8),
+        'bubble'
+      )
+        .setDepth(11)
+        .setAlpha(Phaser.Math.FloatBetween(0.28, 0.9) * (0.45 + (0.55 * intensity)))
+        .setScale(Phaser.Math.FloatBetween(0.85, 2.2) * (0.5 + (0.7 * intensity)));
+
+      const backDist = Phaser.Math.Between(40, 120) * (0.55 + (0.55 * intensity));
+      const sink = Phaser.Math.Between(8, 44) * (0.5 + (0.5 * intensity));
+      this.tweens.add({
+        targets: bubble,
+        x: bubble.x + (bx * backDist) - Phaser.Math.Between(8, 20),
+        y: bubble.y + (by * backDist * 0.25) + sink,
+        alpha: 0,
+        duration: Phaser.Math.Between(580, 1050),
+        ease: 'Sine.easeOut',
+        onComplete: () => bubble.destroy()
+      });
+    }
+  }
+
+  getTrailWorldPoint() {
+    const angle = Phaser.Math.DegToRad(this.player.angle);
+    const frameW = this.player?.frame?.width ?? 300;
+    const backX = this.usingSheet ? -(frameW * 0.34) : -72;
+    const backY = this.usingSheet ? 8 : 2;
+    const ox = backX * this.playerScale;
+    const oy = backY * this.playerScale;
+    return new Phaser.Math.Vector2(
+      this.player.x + (ox * Math.cos(angle) - oy * Math.sin(angle)),
+      this.player.y + (ox * Math.sin(angle) + oy * Math.cos(angle))
+    );
+  }
+
   playTone(freq, durationSec, type = 'sine', volume = 0.02) {
     if (!this.audioCtx) return;
     if (this.audioCtx.state === 'suspended') {
@@ -925,7 +1087,11 @@ export class GameScene extends Phaser.Scene {
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durationSec);
 
     osc.connect(gain);
-    gain.connect(this.audioCtx.destination);
+    if (this.audioMasterGain) {
+      gain.connect(this.audioMasterGain);
+    } else {
+      gain.connect(this.audioCtx.destination);
+    }
     osc.start(t0);
     osc.stop(t0 + durationSec);
   }
